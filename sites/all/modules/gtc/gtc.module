@@ -1,0 +1,273 @@
+<?php
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function gtc_form_devel_generate_content_form_alter(&$form, &$form_state) {
+  $form['gtc'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Generate translated contents.'),
+  );
+  $form['submit']['#weight'] = 1;
+  $form['#validate'][] = '_gtc_generate_content_form_validate';
+}
+
+/**
+ * FormAPI validation before generate nodes.
+ */
+function _gtc_generate_content_form_validate($form, &$form_state) {
+  if ($form_state['values']['gtc'] && isset($form_state['values']['add_language']['und'])) {
+    if (count($form_state['values']['add_language']) == 1) {
+      form_set_error('add_language', t('You must select at least one language.'));
+    }
+  }
+}
+
+/**
+ * Implements hook_node_presave().
+ */
+function gtc_node_presave($node) {
+  if ($dictionary = _gtc_generated_node($node)) {
+    _gtc_generate_title($node, $dictionary);
+    _gtc_translate_fields($node, $dictionary);
+  }
+}
+
+/**
+ * Checks if node is generated with module devel_generate and must be translated
+ *
+ * @return bool
+ *   Translated dictionary
+ */
+function _gtc_generated_node($node) {
+  if (isset($node->devel_generate)) {
+    if ($node->devel_generate['gtc'] && ($dictionary = _gtc_generate_dictionary($node->language))
+      && $node->language != 'und' && $node->language != 'en'
+    ) {
+      return $dictionary;
+    }
+  }
+}
+
+/**
+ * Works the same as devel_create_greeking().
+ */
+function _gtc_create_translated_string($dictionary, $word_count, $title = FALSE) {
+  $dictionary_flipped = array_flip($dictionary);
+  $string = '';
+
+  if (!$title) {
+    $words_remaining = $word_count;
+    while ($words_remaining > 0) {
+      $sentence_length = mt_rand(3, 10);
+      $words = array_rand($dictionary_flipped, $sentence_length);
+      $sentence = implode(' ', $words);
+      $string .= ucfirst($sentence) . '. ';
+      $words_remaining -= $sentence_length;
+    }
+  }
+  else {
+    // Use slightly different method for titles.
+    $words = array_rand($dictionary_flipped, $word_count);
+    $words = is_array($words) ? implode(' ', $words) : $words;
+    $string = ucwords($words);
+  }
+
+  // Work around possible php garbage collection bug. Without an unset(), this
+  // function gets very expensive over many calls (php 5.2.11).
+  unset($dictionary, $dictionary_flipped);
+  return trim($string);
+}
+
+/**
+ * Generates translated dictionary.
+ */
+function _gtc_generate_dictionary($lang) {
+  if (!isset($_SESSION['gtc_' . $lang])) {
+    $result = db_select('locales_target', 'lt')
+      ->condition('language', $lang)
+      ->fields('lt', array('translation'))
+      ->range(0, 50)
+      ->execute();
+
+    $text = NULL;
+    foreach ($result as $data) {
+      strip_tags($data->translation);
+      if (@ !ereg('(@|!|>|<|%)', $data->translation)) {
+        $text .= $data->translation . ' ';
+      }
+    }
+    if (!isset($text)) {
+      return FALSE;
+    }
+    $text = str_replace('.', '', $text);
+    $_SESSION['gtc_' . $lang] = explode(' ', $text);
+  }
+  return $_SESSION['gtc_' . $lang];
+}
+
+/**
+ * Generates translated title
+ */
+function _gtc_generate_title($node, $dictionary) {
+  if ($node->devel_generate['title_length'] < 2) {
+    $node->title = _gtc_create_translated_string($dictionary, 1, TRUE);
+  }
+  else {
+    $node->title = _gtc_create_translated_string($dictionary, mt_rand(1, $node->devel_generate['title_length']), TRUE);
+  }
+  return $node->title;
+}
+
+/**
+ * Translates fields
+ */
+function _gtc_translate_fields($node, $dictionary) {
+  $instances = field_info_instances('node', $node->type);
+  $field_modules = array('text', 'file', 'image');
+  foreach ($instances as $instance) {
+    $field_name = $instance['field_name'];
+    $field = field_info_field($field_name);
+    if (in_array($field['module'], $field_modules)) {
+      $node = call_user_func_array('_gtc_translate_' . $field['module'], array($node, $field, $dictionary));
+    }
+  }
+}
+
+function _gtc_translate_text($object, $field, $dictionary) {
+  $field_name = $field['field_name'];
+  $object_field = $object->$field_name;
+  $output = array();
+  foreach (element_children($object_field['und']) as $key) {
+    if ($field['type'] == 'text_long' || $field['type'] == 'text_with_summary') {
+      $value_trans_trimmed = _gtc_create_long_text($object_field['und'][$key]['format'], $dictionary);
+    }
+    else {
+      $value_orig_array = explode(' ', $object_field['und'][$key]['value']);
+      $value_trans = _gtc_create_translated_string($dictionary, count($value_orig_array));
+      $value_trans_trimmed = _gtc_trim_string($object_field['und'][$key]['value'], $value_trans, $dictionary);
+    }
+    $output['und'][$key] = array(
+      'value' => $value_trans_trimmed,
+      'format' => $object_field['und'][$key]['format']
+    );
+  }
+  $object->$field_name = $output;
+  return $object;
+}
+
+/**
+ * Cuts translated string to be the same length as original string length.
+ */
+function _gtc_trim_string($value_orig, $value_trans, $dictionary) {
+  $value_orig_length = strlen($value_orig);
+  $value_trans_trimmed = (strlen($value_trans) > $value_orig_length) ? substr($value_trans, 0, $value_orig_length) : $value_trans;
+  $value_trans_array = explode(" ", $value_trans_trimmed);
+  if (count($value_trans_array) > 1) {
+    array_pop($value_trans_array); // Remove last element
+    $value_trans_trimmed = implode(" ", $value_trans_array);
+    if (substr($value_trans_trimmed, -1) != '.' && substr($value_orig, -1) == '.') {
+      $value_trans_trimmed .= '.';
+    }
+  }
+  else {
+    $value_trans_trimmed = _gtc_create_translated_string($dictionary, 1, TRUE);
+    while (strlen($value_trans_trimmed) > strlen($value_orig)) {
+      $value_trans_trimmed = _gtc_create_translated_string($dictionary, 1, TRUE);
+    }
+  }
+  return $value_trans_trimmed;
+}
+
+/**
+ * Works the same as devel_create_content() AND devel_create_para().
+ */
+function _gtc_create_long_text($type, $dictionary) {
+  $nparas = mt_rand(1, 12);
+  $output = "";
+  for ($i = 1; $i <= $nparas; $i++) {
+    switch ($type) {
+      case 'full_html':
+        $output .= "<p>" . _gtc_create_translated_string($dictionary, mt_rand(10, 60)) . "</p>";
+        break;
+
+      case 'filtered_html':
+        $output .= _gtc_create_translated_string($dictionary, mt_rand(10, 60)) . "<br />";
+        break;
+
+      default:
+        $output .= _gtc_create_translated_string($dictionary, mt_rand(10, 60));
+    }
+    $output .= "\n\n";
+  }
+  return $output;
+}
+
+function _gtc_translate_image($object, $field, $dictionary) {
+  $field_name = $field['field_name'];
+  $object_field = $object->$field_name;
+  $output = array();
+  foreach (element_children($object_field['und']) as $key) {
+    $alt = _gtc_create_translated_string($dictionary, 4);
+    $title = _gtc_create_translated_string($dictionary, 4);
+    $output['und'][$key] = array(
+      'fid' => $object_field['und'][$key]['fid'],
+      'alt' => $alt,
+      'title' => $title,
+      'width' => $object_field['und'][$key]['width'],
+      'height' => $object_field['und'][$key]['height']
+    );
+  }
+  $object->$field_name = $output;
+  return $object;
+}
+
+function _gtc_translate_file($object, $field, $dictionary) {
+  $field_name = $field['field_name'];
+  $object_field = $object->$field_name;
+  $output = array();
+  foreach (element_children($object_field['und']) as $key) {
+    $description = _gtc_create_translated_string($dictionary, 10);
+    $output['und'][$key] = array(
+      'fid' => $object_field['und'][$key]['fid'],
+      'display' => $object_field['und'][$key]['display'],
+      'description' => $description
+    );
+  }
+  $object->$field_name = $output;
+  return $object;
+}
+
+/**
+ * Translates comments.
+ */
+function gtc_node_insert($node) {
+  if ($dictionary = _gtc_generated_node($node)) { // Node is generated with module devel_generate and must be translated
+    if (!empty($node->devel_generate['max_comments']) && $node->comment >= COMMENT_NODE_OPEN) { // Node has comment
+      // Get all comments ID of the node
+      $result = db_select('comment')
+        ->fields('comment', array('cid'))
+        ->condition('nid', $node->nid, '=')
+        ->execute();
+      // Translate all comments of the node
+      foreach ($result as $value) {
+        $comment = comment_load($value->cid);
+        // Translate subject
+        $value_trans = _gtc_create_translated_string($dictionary, mt_rand(2, $node->devel_generate['title_length']), TRUE);
+        $comment->subject = _gtc_trim_string($comment->subject, $value_trans, $dictionary);
+        // Translate fields
+        $instances = field_info_instances('comment', 'comment_node_' . $node->type);
+        $field_modules = array('text', 'file', 'image');
+        foreach ($instances as $instance) {
+          $field_name = $instance['field_name'];
+          $field = field_info_field($field_name);
+          if (in_array($field['module'], $field_modules)) {
+            $comment = call_user_func_array('_gtc_translate_' . $field['module'], array($comment, $field, $dictionary));
+          }
+        }
+        // Update comment
+        comment_save($comment);
+      }
+    }
+  }
+}

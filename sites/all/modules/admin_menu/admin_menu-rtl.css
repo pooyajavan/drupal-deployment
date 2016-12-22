@@ -1,0 +1,54 @@
+#admin-menu {
+  font-size: 10px;
+  font-family: "Tahoma", lucida grande, verdana, arial, sans-serif;
+  left: 0;
+  text-align: right;
+}
+#admin-menu li.admin-menu-action {
+  float: left;
+}
+
+/* All lists */
+#admin-menu ul a {
+  text-align: right;
+}
+
+/* All list items */
+#admin-menu li {
+  float: right;
+}
+
+/* Second-and-more-level hovering */
+#admin-menu li li.expandable {
+  background: #45454A url(images/arrow-rtl.png) no-repeat 5px 6px;
+}
+#admin-menu li li:hover,
+#admin-menu li li.iehover {
+  background-color: #111;
+}
+#admin-menu li li:hover a,
+#admin-menu li li:hover li:hover a,
+#admin-menu li li:hover li:hover li:hover a {
+  color: #FFF;
+}
+#admin-menu li li.expandable:hover a,
+#admin-menu li li.expandable:hover li.expandable:hover a {
+  border-color: #444;
+  color: #EEE;
+}
+#admin-menu li li.expandable:hover li a,
+#admin-menu li li.expandable:hover li.expandable:hover li a {
+  border-color: #323232;
+}
+#admin-menu li li:hover li a,
+#admin-menu li li.iehover li a,
+#admin-menu li li.iehover li.iehover li a {
+  color: #EEE;
+}
+#admin-menu li li.iehover a,
+#admin-menu li li.iehover li.iehover a,
+#admin-menu li li.iehover li.iehover li.iehover a {
+  color: #FFF;
+  width: 90%; /* IE */
+}
+

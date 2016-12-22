@@ -1,0 +1,21 @@
+
+#admin-menu {
+  font: normal small "Tahoma", "Lucida Grande", Verdana, sans-serif;
+}
+
+/**
+ * Administration menu.
+ */
+#admin-menu li li.expandable ul {
+  margin: -22px 160px 0 0;
+}
+
+/**
+ * Shortcuts toggle.
+ */
+#admin-menu li.admin-menu-shortcuts {
+  float: left;
+}
+#admin-menu li.admin-menu-shortcuts span.toggle {
+  margin: 0 1.3em 0 0;
+}

@@ -1,0 +1,6 @@
+name = Generate Translated Content
+description = Adds the ability to devel module that generate localized content.
+core = 7.x
+package = Development
+dependencies[] = devel_generate
+dependencies[] = locale
