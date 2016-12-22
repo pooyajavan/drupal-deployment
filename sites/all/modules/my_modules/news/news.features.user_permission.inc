@@ -40,9 +40,7 @@ function news_user_default_permissions() {
   // Exported permission: 'edit any news content'.
   $permissions['edit any news content'] = array(
     'name' => 'edit any news content',
-    'roles' => array(
-      'manager' => 'manager',
-    ),
+    'roles' => array(),
     'module' => 'node',
   );
 
