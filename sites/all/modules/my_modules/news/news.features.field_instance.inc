@@ -100,7 +100,7 @@ function news_field_default_field_instances() {
         'module' => 'image',
         'settings' => array(
           'image_link' => 'file',
-          'image_style' => 'large',
+          'image_style' => 'medium',
         ),
         'type' => 'image',
         'weight' => 1,
